@@ -22,6 +22,9 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <string.h>
+#include <stdio.h>
+
 #include "ssd1306.h"
 #include "image.h"
 /* USER CODE END Includes */
@@ -46,6 +49,8 @@ I2C_HandleTypeDef hi2c1;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
+static const uint8_t TMP102_ADDR = 0x48 << 1;
+static const uint8_t REG_TEMP = 0x00;
 
 /* USER CODE END PV */
 
@@ -70,6 +75,10 @@ void myDarw(uint8_t x, uint8_t y, const uint8_t* chars);
 int main(void)
 {
   /* USER CODE BEGIN 1 */
+  HAL_StatusTypeDef ret;
+  uint8_t buf[12];
+  uint16_t val;
+  float temp_c;
 
   /* USER CODE END 1 */
 
@@ -99,29 +108,49 @@ int main(void)
   ssd1306_Clear();
   ssd1306_SetColor(White);
 
-
   ssd1306_DrawBitmap(0, 0, 128, 64, redis_logo);
   ssd1306_UpdateScreen();
 
   HAL_Delay(1000);
   ssd1306_RollingHorizontal();
-//  ssd1306_RollingHV();
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	  //	ssd1306_DrawBitmap(0, 0, 128, 64, redis_logo);
-	  //	ssd1306_DrawLine(0, 8, 127, 8);
-	  //	for(int i=0; i<16; i++) {
-	  //		for (int j=0; j<16; j++) {
-	  //			ssd1306_DrawPixel(i, j);
-	  //		}
-	  //	}
-	  //	ssd1306_UpdateScreen();
-	  //	HAL_Delay(2000);
-	  //	ssd1306_Clear();
+	  // Tell TMP102 that we want to read from the temperature register
+	  buf[0] = REG_TEMP;
+	  ret = HAL_I2C_Master_Transmit(&hi2c1, TMP102_ADDR, buf, 1, HAL_MAX_DELAY);
+	  if(ret != HAL_OK) {
+		  strcpy((char*)buf, "ErrorTx\r\n");
+	  } else {
+
+		  // Read 2 bytes from the temperature register
+		  ret = HAL_I2C_Master_Receive(&hi2c1, TMP102_ADDR, buf, 2, HAL_MAX_DELAY);
+		  if(ret != HAL_OK) {
+			  strcpy((char*)buf, "ErrorRx\r\n");
+		  } else {
+			  // Combine the bytes
+			  val = ((int16_t)buf[0] << 4) | (buf[1] >> 4);
+
+			  // Convert to 2's complement, since temperature can be negative
+			  if(val > 0x7FF) {
+				  val |= 0xF000;
+			  }
+
+			  // Convert to float temperature value (Celsius)
+			  temp_c = val * 0.0625;
+
+			  // Convert temperature to decimal format
+			  temp_c *= 100;
+			  sprintf((char*)buf, "%u.%02u C\r\n", (unsigned int)temp_c/100, (unsigned int)temp_c%100);
+		  }
+
+	  }
+
+	  HAL_UART_Transmit(&huart2, buf, strlen((char*)buf), HAL_MAX_DELAY);
 
 	  HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
 	  HAL_Delay(2000);

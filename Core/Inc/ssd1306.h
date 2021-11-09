@@ -136,6 +136,5 @@ void ssd1306_FlipScreenVertically();
 void ssd1306_MirrorScreen();
 void ssd1306_Clear();
 void ssd1306_RollingHorizontal(void);
-void ssd1306_RollingHV(void);
 /* CODE END PFP */
 #endif /* SSD1306_H_ */

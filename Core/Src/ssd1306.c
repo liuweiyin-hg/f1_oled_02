@@ -803,6 +803,7 @@ void ssd1306_RollingHorizontal(void) {
 	ssd1306_WriteCommand(0x2f);//开滚动
 }
 
+/*
 void ssd1306_RollingHV(void) {
 	ssd1306_WriteCommand(0x2e);        //关闭滚动
 	ssd1306_WriteCommand(0x29);        //水平垂直和水平滚动左右 29/2a
@@ -813,4 +814,5 @@ void ssd1306_RollingHV(void) {
 	ssd1306_WriteCommand(0x01);        //垂直滚动偏移量
 	ssd1306_WriteCommand(0x2F);        //开启滚动
 }
+*/
 /* CODE END Public functions */
