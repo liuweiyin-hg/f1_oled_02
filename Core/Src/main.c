@@ -112,7 +112,6 @@ int main(void)
   ssd1306_UpdateScreen();
 
   HAL_Delay(1000);
-  ssd1306_RollingHorizontal();
 
   /* USER CODE END 2 */
 
@@ -151,6 +150,14 @@ int main(void)
 	  }
 
 	  HAL_UART_Transmit(&huart2, buf, strlen((char*)buf), HAL_MAX_DELAY);
+
+	  sprintf((char*)buf, "%u.%02u C", (unsigned int)temp_c/100, (unsigned int)temp_c%100);
+	  ssd1306_Clear();
+	  ssd1306_SetCursor(8, 0);
+	  ssd1306_WriteString("TMP102", Font_11x18);
+	  ssd1306_SetCursor(8, 24);
+	  ssd1306_WriteString((char*)buf, Font_11x18);
+	  ssd1306_UpdateScreen();
 
 	  HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
 	  HAL_Delay(2000);
