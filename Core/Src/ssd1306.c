@@ -23,7 +23,6 @@ static uint8_t SSD1306_Buffer[SSD1306_BUFFER_SIZE];
 SSD1306_Geometry display_geometry = SSD1306_GEOMETRY;
 
 // I2C object
-extern I2C_HandleTypeDef hi2c1;
 I2C_HandleTypeDef *hi2c;
 
 /* CODE END Private defines */
@@ -63,9 +62,9 @@ void ssd1306_SetColor(SSD1306_COLOR color)
 }
 
 //	Initialize the oled screen
-uint8_t ssd1306_Init(I2C_HandleTypeDef *hi2cX)
+uint8_t ssd1306_Init(I2C_HandleTypeDef *hi2c_for_oled)
 {
-	hi2c = hi2cX;
+	hi2c = hi2c_for_oled;
 	/* Check if LCD connected to I2C */
 	if (HAL_I2C_IsDeviceReady(hi2c, SSD1306_I2C_ADDR, 5, 1000) != HAL_OK)
 	{

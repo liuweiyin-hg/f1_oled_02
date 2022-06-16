@@ -46,6 +46,8 @@
 /* Private variables ---------------------------------------------------------*/
 I2C_HandleTypeDef hi2c1;
 
+TIM_HandleTypeDef htim2;
+
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
@@ -59,13 +61,156 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_I2C1_Init(void);
+static void MX_TIM2_Init(void);
 /* USER CODE BEGIN PFP */
-
+void Dh11GpioInputMode();
+void Dh11GpioOutputMode();
+void delay_us(uint16_t us);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-void myDarw(uint8_t x, uint8_t y, const uint8_t* chars);
+void Dh11GpioInputMode() {
+	GPIO_InitTypeDef GPIO_InitStruct = {0};
+	GPIO_InitStruct.Pin = DH11_Pin;
+	GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
+	GPIO_InitStruct.Pull = GPIO_PULLUP;
+	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+	HAL_GPIO_Init(DH11_GPIO_Port, &GPIO_InitStruct);
+}
+
+void Dh11GpioOutputMode() {
+	// DH11 output high
+	HAL_GPIO_WritePin(DH11_GPIO_Port, DH11_Pin, GPIO_PIN_SET);
+	GPIO_InitTypeDef GPIO_InitStruct = {0};
+	GPIO_InitStruct.Pin = DH11_Pin;
+	GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
+	GPIO_InitStruct.Pull = GPIO_PULLUP;
+	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+	HAL_GPIO_Init(DH11_GPIO_Port, &GPIO_InitStruct);
+}
+
+/*
+ * Delay micro seconds
+ *
+ */
+void delay_us(uint16_t us) {
+	__HAL_TIM_SET_COUNTER(&htim2, 0);
+	while (__HAL_TIM_GET_COUNTER(&htim2) < us);
+}
+
+/*
+ * DH11 process
+ */
+uint8_t dh11[5] = {0, 0, 0, 0, 0};
+
+uint8_t Dh11Job() {
+	uint8_t buf[32];
+	uint16_t timEnd = 0;
+	uint16_t timEndArr[42];
+	uint8_t timEndArrIdx = 0;
+	uint8_t timEndLen = sizeof(timEndArr)/2;
+	uint8_t highOK = 0;
+	uint8_t lowOK = 0;
+
+	for(int i=0; i < sizeof(dh11); i++) {
+		dh11[i] = 0;
+	}
+
+	sprintf((char*)buf, "tim_end_sz %d\r\n", timEndLen);
+	HAL_UART_Transmit(&huart2, buf, strlen((char*)buf), HAL_MAX_DELAY);
+
+	for(int i=0; i<timEndLen; i++) {
+		timEndArr[i] = 0;
+	}
+
+	HAL_TIM_Base_Start(&htim2);
+
+	// 1. set high
+	Dh11GpioOutputMode();
+	delay_us(20000);
+
+	// 2. low and keep greater than 18 milli secs
+	HAL_GPIO_WritePin(DH11_GPIO_Port, DH11_Pin, GPIO_PIN_RESET);
+	delay_us(30000);
+
+	// 3. set high 20-40us
+	HAL_GPIO_WritePin(DH11_GPIO_Port, DH11_Pin, GPIO_PIN_SET);
+	delay_us(30);
+
+	// 4. input mode
+	Dh11GpioInputMode();
+	// read 80us low then 80us high
+	__HAL_TIM_SET_COUNTER(&htim2, 0);
+
+	while(1) {
+		if(HAL_GPIO_ReadPin(DH11_GPIO_Port, DH11_Pin) == GPIO_PIN_RESET) {
+			timEnd = __HAL_TIM_GET_COUNTER(&htim2);
+			if(lowOK == 0) {
+				lowOK = 1;
+				highOK = 0;
+				if(timEndArrIdx < timEndLen) {
+					timEndArr[timEndArrIdx] = timEnd;
+					timEndArrIdx++;
+				}
+			}
+
+			if(timEnd > 50000){
+				break;
+			}
+		}
+
+		if(HAL_GPIO_ReadPin(DH11_GPIO_Port, DH11_Pin) == GPIO_PIN_SET) {
+			if(highOK == 0) {
+				lowOK = 0;
+				highOK = 1;
+				__HAL_TIM_SET_COUNTER(&htim2, 0);
+			}
+
+			timEnd = __HAL_TIM_GET_COUNTER(&htim2);
+			if(timEnd > 50000) {
+				break;
+			}
+		}
+	}
+
+	uint8_t bitNum = 0;
+	uint8_t dh11Idx = 0;
+
+	for(uint8_t i=0; i<timEndLen; i++) {
+		sprintf((char*)buf, "tea %d %d\r\n", i, timEndArr[i]);
+		HAL_UART_Transmit(&huart2, buf, strlen((char*)buf), HAL_MAX_DELAY);
+
+		if(i < 2) {
+			// skip low 80us and high 80 us
+			continue;
+		}
+
+		bitNum++;
+		if(timEndArr[i] > 40) {
+			dh11[dh11Idx] |= 1;
+		} // high
+		// else low
+		if(bitNum % 8 != 0) {
+			dh11[dh11Idx] = dh11[dh11Idx] << 1;
+		}
+
+		if(bitNum % 8 == 0) {
+			dh11Idx++;
+		}
+	}
+
+	for(int i=0; i < sizeof(dh11); i++) {
+		sprintf((char*)buf, "dh %d %d\r\n", i, dh11[i]);
+		HAL_UART_Transmit(&huart2, buf, strlen((char*)buf), HAL_MAX_DELAY);
+	}
+
+	sprintf((char*)buf, "--dh11\r\n");
+	HAL_UART_Transmit(&huart2, buf, strlen((char*)buf), HAL_MAX_DELAY);
+
+	HAL_TIM_Base_Stop(&htim2);
+	return 0;
+}
 /* USER CODE END 0 */
 
 /**
@@ -102,6 +247,7 @@ int main(void)
   MX_GPIO_Init();
   MX_USART2_UART_Init();
   MX_I2C1_Init();
+  MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
   ssd1306_Init(&hi2c1);
   ssd1306_FlipScreenVertically();
@@ -123,7 +269,7 @@ int main(void)
 	  buf[0] = REG_TEMP;
 	  ret = HAL_I2C_Master_Transmit(&hi2c1, TMP102_ADDR, buf, 1, HAL_MAX_DELAY);
 	  if(ret != HAL_OK) {
-		  strcpy((char*)buf, "ErrorTx\r\n");
+		  strcpy((char*)buf, "T102_Err\r\n");
 	  } else {
 
 		  // Read 2 bytes from the temperature register
@@ -144,17 +290,40 @@ int main(void)
 
 			  // Convert temperature to decimal format
 			  temp_c *= 100;
-			  sprintf((char*)buf, "%u.%02u C\r\n", (unsigned int)temp_c/100, (unsigned int)temp_c%100);
+			  sprintf((char*)buf, "%d.%02u C\r\n", (int16_t)temp_c/100, (int16_t)temp_c%100);
 		  }
 
 	  }
 
 	  HAL_UART_Transmit(&huart2, buf, strlen((char*)buf), HAL_MAX_DELAY);
 
-	  sprintf((char*)buf, "%u.%02u C", (unsigned int)temp_c/100, (unsigned int)temp_c%100);
+	  sprintf((char*)buf, "%d.%02u C", (int16_t)temp_c/100, (int16_t)temp_c%100);
 	  ssd1306_Clear();
 	  ssd1306_SetCursor(8, 0);
 	  ssd1306_WriteString("TMP102", Font_11x18);
+	  ssd1306_SetCursor(8, 24);
+	  ssd1306_WriteString((char*)buf, Font_11x18);
+	  ssd1306_UpdateScreen();
+
+	  HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
+	  HAL_Delay(2000);
+
+	  Dh11Job();
+	  sprintf((char*)buf, "%d.%d C", dh11[2], dh11[3]);
+	  ssd1306_Clear();
+	  ssd1306_SetCursor(8, 0);
+	  ssd1306_WriteString("DH11 TMP", Font_11x18);
+	  ssd1306_SetCursor(8, 24);
+	  ssd1306_WriteString((char*)buf, Font_11x18);
+	  ssd1306_UpdateScreen();
+
+	  HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
+	  HAL_Delay(2000);
+
+	  sprintf((char*)buf, "%d.%d", dh11[0], dh11[1]);
+	  ssd1306_Clear();
+	  ssd1306_SetCursor(8, 0);
+	  ssd1306_WriteString("DH11 HUM", Font_11x18);
 	  ssd1306_SetCursor(8, 24);
 	  ssd1306_WriteString((char*)buf, Font_11x18);
 	  ssd1306_UpdateScreen();
@@ -241,6 +410,51 @@ static void MX_I2C1_Init(void)
 }
 
 /**
+  * @brief TIM2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM2_Init(void)
+{
+
+  /* USER CODE BEGIN TIM2_Init 0 */
+
+  /* USER CODE END TIM2_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM2_Init 1 */
+
+  /* USER CODE END TIM2_Init 1 */
+  htim2.Instance = TIM2;
+  htim2.Init.Prescaler = 72-1;
+  htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim2.Init.Period = 65535;
+  htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim2, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM2_Init 2 */
+
+  /* USER CODE END TIM2_Init 2 */
+
+}
+
+/**
   * @brief USART2 Initialization Function
   * @param None
   * @retval None
@@ -289,6 +503,9 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(DH11_GPIO_Port, DH11_Pin, GPIO_PIN_SET);
+
+  /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : B1_Pin */
@@ -296,6 +513,13 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : DH11_Pin */
+  GPIO_InitStruct.Pin = DH11_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+  HAL_GPIO_Init(DH11_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : LD2_Pin */
   GPIO_InitStruct.Pin = LD2_Pin;
