@@ -12,19 +12,12 @@
 /* CODE END Includes */
 
 /* CODE BEGIN Private defines */
-
 // Screen object
 static SSD1306_t SSD1306;
-
 // Screenbuffer
 static uint8_t SSD1306_Buffer[SSD1306_BUFFER_SIZE];
-
 // SSD1306 display geometry
 SSD1306_Geometry display_geometry = SSD1306_GEOMETRY;
-
-// I2C object
-I2C_HandleTypeDef *hi2c;
-
 /* CODE END Private defines */
 
 /* CODE BEGIN Private functions */
@@ -62,11 +55,10 @@ void ssd1306_SetColor(SSD1306_COLOR color)
 }
 
 //	Initialize the oled screen
-uint8_t ssd1306_Init(I2C_HandleTypeDef *hi2c_for_oled)
+uint8_t ssd1306_Init()
 {
-	hi2c = hi2c_for_oled;
 	/* Check if LCD connected to I2C */
-	if (HAL_I2C_IsDeviceReady(hi2c, SSD1306_I2C_ADDR, 5, 1000) != HAL_OK)
+	if (HAL_I2C_IsDeviceReady(&SSD1306_I2C_PORT, SSD1306_I2C_ADDR, 5, 1000) != HAL_OK)
 	{
 		SSD1306.Initialized = 0;
 		/* Return false */
@@ -763,20 +755,20 @@ void ssd1306_Clear()
 static void ssd1306_WriteCommand(uint8_t command)
 {
 #ifdef USE_DMA
-	while(HAL_I2C_GetState(hi2c) != HAL_I2C_STATE_READY);
-	HAL_I2C_Mem_Write_DMA(hi2c, SSD1306_I2C_ADDR, 0x00, 1, &command, 1);
+	while(HAL_I2C_GetState(&SSD1306_I2C_PORT) != HAL_I2C_STATE_READY);
+	HAL_I2C_Mem_Write_DMA(&SSD1306_I2C_PORT, SSD1306_I2C_ADDR, 0x00, 1, &command, 1);
 #else
-	HAL_I2C_Mem_Write(hi2c, SSD1306_I2C_ADDR, 0x00, 1, &command, 1, 10);
+	HAL_I2C_Mem_Write(&SSD1306_I2C_PORT, SSD1306_I2C_ADDR, 0x00, 1, &command, 1, 10);
 #endif
 }
 
 static void ssd1306_WriteData(uint8_t* data, uint16_t size)
 {
 #ifdef USE_DMA
-	while(HAL_I2C_GetState(hi2c) != HAL_I2C_STATE_READY);
-	HAL_I2C_Mem_Write_DMA(hi2c, SSD1306_I2C_ADDR, 0x40, 1, data, size);
+	while(HAL_I2C_GetState(&SSD1306_I2C_PORT) != HAL_I2C_STATE_READY);
+	HAL_I2C_Mem_Write_DMA(&SSD1306_I2C_PORT, SSD1306_I2C_ADDR, 0x40, 1, data, size);
 #else
-	HAL_I2C_Mem_Write(hi2c, SSD1306_I2C_ADDR, 0x40, 1, data, size, 100);
+	HAL_I2C_Mem_Write(&SSD1306_I2C_PORT, SSD1306_I2C_ADDR, 0x40, 1, data, size, 100);
 #endif
 }
 
